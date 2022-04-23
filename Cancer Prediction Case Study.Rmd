@@ -1,0 +1,251 @@
+---
+title: "Cancer Prediction Case Study"
+author: "Mia Brito"
+date: "4/14/2022"
+output:
+  pdf_document: default
+---
+
+
+
+## Executive Summary
+
+For this case, we must find the best model for predicting the 
+
+## Related Literature
+
+|       There are several modeling methods that one can pick from, and it is crucial to pick the method that best fits your experiment. The type of model you use can make or break your statistical significance. In our previous case studies, we explored the use of Logistics Regression Models. We concluded that the Logistic Regression GLM model was found to be statistically significant.  In this case study, we wanted to find the best suited model for predicting the class (B or M) of a patient with cancer. In Logistic Regression Analyses of Conventional Ultrasonography, Tiantian Pang and Leidan Huang conducted an experiment to diagnose thyroid nodules by screening significant sonographic features using a Logistic Regression Analysis. They concluded that the Logistic Regression Model was an effective tool to differentiate between malignant and benign thyroid nodules. 
+|       Within our case study, we also want to explore the use of Support Vector Machines. Support Vector Machines help with classification and regression through a machine learning algorithm. It uses the notion of finding a hyperplane to divide data into two groups. In Kyung-Shik Shin, Taik Soo Lee, and Hyun-jung Kim’s case study, An Application of Support Vector Machines in Bankruptcy Prediction Model, they explored the use of support vector machines in a Bankruptcy Prediction Model. Shin, Lee, and Kim concluded that the SVM proved to be statistically significant.
+|       We stumbled across Ricciardi, Valente, Edmund, Cantoni, Green, Fiorillo, Picone, Santini, and Cesarelli’s work, and they used an LDA model to explore the use of a data mining technique to help clinicians in decision-making when it comes to Coronary Artery Disease. Linear Discriminant Analysis is another common modeling approach that is used to find a linear combination to separate two or more subjects. Within their research, they found that the LDA model enhanced the decision making process for doctors to choose the correct treatment for their patient.
+|       Lastly, we wanted to explore the Random Forest method. A Random Forest Method is a learning method for classification. It constructs a multitude of decision trees at training time to explore the statistical significance of a test. Martin Hanko, Marian Grendar, Pavol Snopko, Rene Opsenak, Juraj Sutovsky, Martin Benco, Jakub Sorsak, Kamil Zelenak, Branislav Kolarovszki explored the use of a Random Forest Method when predicting the morality in patients with traumatic brain injuries. They concluded that the use of a Random Forest method was statistically significant when predicting the postoperative outcome and mortality in patients undergoing primary decompressive craniectomy. 
+
+
+
+## Methodology
+|       The three modeling methods that we used were a linear regression model, a logit model (glm), and a support vector machine (SVM). The accuracy and sensitivity for each of the techniques vary, as well as the confusion matrices that tell us what each model predicts the best. However, the linear regression model would not be appropriate to use in this instance because a linear model can only be applied when using a continuous dependent variable, rather than a binary one that uses 0 and 1’s. Logistic regression is typically used when the objective of the prediction is to project an outcome variable versus seeing how every predictor variable is related to the outcome variable.
+
+
+## Data Analysis
+
+
+id: Patient ID number
+diagnosis: Diagnosis (M = malignant, B = benign)
+3-32 Ten real-valued features are computed for each cell nucleus:
+a) radius (mean of distances from center to points on the
+perimeter)
+b) texture (standard deviation of gray-scale values)
+c) perimeter
+d) area
+e) smoothness (local variation in radius lengths)
+f) compactness (perimeter^2 / area - 1.0)
+g) concavity (severity of concave portions of the contour)
+h) concave points (number of concave portions of the contour)
+i) symmetry
+j) fractal dimension ("coastline approximation" - 1)
+
+\newpage
+## Appendix
+
+
+## Loading In Libraries
+
+```{r library,message=FALSE,echo = TRUE}
+library(tidyverse)
+library(readr)
+library(readxl)
+library(caret)
+library(caTools)
+library(ROCR)
+library(corrplot)
+source('/Users/thomasfarrell/Downloads/optim_threshold.R')
+```
+
+## Reading in Data
+
+```{r}
+b1 <- read.csv("/Users/thomasfarrell/Downloads/CancerData.csv", sep = ",")
+```
+
+## Make Factor variables
+
+```{r}
+b1$diagnosis = as.factor(b1$diagnosis)
+str(b1)
+```
+
+## Removing Highly Correlated Values
+```{r}
+b1_num = dplyr::select_if(b1, is.numeric)
+M = cor(b1_num)
+highcorr = findCorrelation(M, cutoff = .9, names = TRUE)
+b1 = dplyr::select(b1, - highcorr)
+```
+
+## Splitting data into Training and Testing
+```{r}
+set.seed(1)
+tr_ind = sample(nrow(b1),.8*nrow(b1), replace = F)
+b1train = b1[tr_ind,]
+b1test = b1[-tr_ind,]
+```
+
+### Check correlation in variables
+
+```{r}
+b1_num = dplyr::select_if(b1, is.numeric)
+M = cor(b1_num)
+corrplot(M, method = "circle")
+b1 = dplyr::select(b1, - concave.points_worst)
+```
+
+
+```{r}
+colSums(is.na(b1))
+```
+
+```{r}
+ggplot(b1) +
+  aes(x = diagnosis, fill = diagnosis, colour = diagnosis) +
+  geom_bar() +
+  scale_fill_viridis_d(option = "cividis", direction = 1) +
+  scale_color_viridis_d(option = "cividis", direction = 1) +
+  labs(
+    x = "Diagnosis (B or M)",
+    y = "Count",
+    title = "Cancer Diagnosis"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 20L,
+    hjust = 0.5),
+    axis.title.y = element_text(size = 13L),
+    axis.title.x = element_text(size = 13L)
+  )
+
+```
+
+
+
+
+
+### Logistic Regression
+
+*	Advantages:	
+    * Relatively easy to interpret and allows a clear understanding of how each of the predictors are influencing the outcome.
+    * We do not need to transform the response to have a normal distribution.
+    * Able to deal with categorical predictors.
+
+*	Disadvantages: 
+    * Predictor variables need to be uncorrelated.
+    * Strict assumptions around distribution shape and randomness of error terms.
+    * Sensitive to outliers
+
+
+```{r}
+a1 = glm(formula = diagnosis ~ ., data = b1 , family = binomial)
+
+
+car::vif(a1)
+summary(a1)
+
+predprob = predict.glm(a1, newdata = b1test, type = "response")
+predclass_log = ifelse(predprob >= .36, "M", "B")
+caret::confusionMatrix(as.factor(predclass_log), as.factor(b1test$diagnosis), positive = "M")
+
+```
+
+```{r}
+optim_threshold(a1,b1, b1$diagnosis)
+```
+
+
+### Use Step function to reduce variables
+
+```{r results='hide',echo=FALSE}
+m2.log = step(a1, direction = "backward")
+summary(m2.log)
+
+car::vif(m2.log)
+```
+
+
+### LDA model
+
+```{r}
+library(MASS)
+m1.lda = lda(formula = diagnosis ~ ., data = b1train)
+predclass_lda = predict(m1.lda, newdata = b1test)
+caret::confusionMatrix(as.factor(predclass_lda$class),as.factor(b1test$diagnosis), positive = "M") 
+```
+
+
+
+
+### SVM Model
+
+
+*	Advantages:	
+    * It works really well with a clear margin of separation
+    * It is effective in cases where the number of dimensions is greater than the number of samples
+    * It uses a subset of training points in the decision function (called support vectors), so it is also memory efficient.
+
+*	Disadvantages: 
+    * It doesn’t perform well when we have large data set because the required training time is higher
+    * SVM doesn’t directly provide probability estimates, these are calculated using an expensive five-fold cross-validation
+    * It also doesn’t perform very well, when the data set has more noise i.e. target classes are overlapping
+
+
+
+
+
+```{r}
+library(e1071)
+set.seed(1)
+tuned = tune.svm(diagnosis ~ ., data = b1train, kernel = 'linear',gamma = seq(.01,.1,by = .025), cost = seq(.1,1.2, by = .1), scale = TRUE)
+tuned$best.parameters
+```
+#creating SVM using tuned parameters
+
+```{r}
+svm1 = svm(diagnosis ~ ., data = b1test, kernel = 'linear', gamma = tuned$best.parameters$gamma, cost = tuned$best.parameters$cost)
+```
+
+
+
+
+#Make predictions on training data set
+
+
+```{r}
+predSVM = predict(svm1, b1train)
+caret::confusionMatrix(predSVM, b1train$diagnosis, positive = "M")
+```
+
+The accuracy of our tuned model is 94.52% with a sensitivity of .8941 and specificity of .9755.
+
+
+### Decision tree
+
+```{r}
+library(rpart.plot)
+library(rpart)
+library(caTools)
+set.seed(123)
+split = sample.split(b1$diagnosis, SplitRatio = 0.8)
+b1train = subset(b1, split == TRUE)
+b1test = subset(b1, split == FALSE)
+tree.b1train <- rpart(formula = diagnosis ~  . ,
+                       data = b1test,control =rpart.control(minsplit=10,minbucket=10,cp=0))
+rpart.plot(tree.b1train) 
+```
+
+
+
+```{r}
+pred_b1tree = predict(tree.b1train, newdata = b1test, type = "class")
+confusionMatrix(b1test$diagnosis, pred_b1tree)
+```
+
+
+
+
